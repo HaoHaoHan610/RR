@@ -72,5 +72,5 @@ def seg_initializing(n):
     # print(ranking)
 
 if __name__ == '__main__':
-    seg_initializing(n)
+    initializing()
 
