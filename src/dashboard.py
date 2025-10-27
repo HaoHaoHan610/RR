@@ -1,69 +1,58 @@
-# rr_gui.py
-# Minimal Round Robin visualizer (pure Tkinter)
-# Python 3.10+ recommended
-
-import tkinter as tk
+import customtkinter as ctk
 from tkinter import ttk, messagebox
 from collections import deque
-from dataclasses import dataclass, field
+import tkinter as tk
+from initializing_process import seg_initializing
 
-@dataclass
+ctk.set_appearance_mode("dark")
+
 class Proc:
-    pid: str
-    arrival: int
-    burst: int
-    remaining: int = field(init=False)
-    first_start: int = field(default=None)
-    completion: int = field(default=None)
+    def __init__ (self,pid,arrival,burst,start = None,complete = None):
+        self.pid = pid
+        self.arrival = arrival
+        self.burst = burst
+        self.start = start
+        self.complete = complete
+        self.remain = self.burst
 
-    def __post_init__(self):
-        self.remaining = self.burst
-
-@dataclass
 class Segment:
-    pid: str | None     # None -> context switch / idle
-    start: int
-    end: int
-    kind: str           # 'run' | 'cs' | 'idle'
+    def __init__(self,pid,start,end,kind):
+        self.pid = pid
+        self.start = start
+        self.end = end
+        self.kind = kind
 
-def compute_rr(processes, quantum: int, cs: int):
-    """
-    Compute RR schedule.
-    Returns: segments (list[Segment]), procs_stats (dict pid -> Proc), totals (dict)
-    """
+def CalculateRR(processes, quantum,cs):
     procs = {p.pid: p for p in processes}
-    arrivals = sorted(processes, key=lambda p: p.arrival)
+    arrivals = sorted(processes,key=lambda p: p.arrival)
+    # To sort on arrival time 
 
     time = 0
-    i = 0  # index over arrivals
+    i = 0
     ready = deque()
     segments: list[Segment] = []
-    total_run_time = 0
+    total_runtime = 0
 
     def flush_arrivals(upto_time):
-        nonlocal i, ready
+        nonlocal i, ready # use directly index and ready in function
         while i < len(arrivals) and arrivals[i].arrival <= upto_time:
             ready.append(arrivals[i])
-            i += 1
+            i += 1 #add arrival time of process
 
-    # Prime arrivals
     flush_arrivals(time)
 
     while True:
-        # All done?
-        if all(p.remaining == 0 for p in procs.values()):
-            break
+        if all(p.remain == 0 for p in procs.values()):
+            break # ALL DONE
 
-        # If no ready, jump to next arrival (idle gap)
         if not ready:
             if i < len(arrivals):
                 next_t = arrivals[i].arrival
                 if next_t > time:
-                    segments.append(Segment(None, time, next_t, 'idle'))
+                    segments.append(Segment(None, time,next_t,'idle'))
                     time = next_t
                 flush_arrivals(time)
-            else:
-                # Shouldn't happen (since loop would have broken), but safe-guard
+            else:   
                 break
 
         if not ready:
@@ -71,92 +60,88 @@ def compute_rr(processes, quantum: int, cs: int):
 
         p = ready.popleft()
 
-        # Record first response
-        if p.first_start is None:
-            p.first_start = time
-
-        # Run slice
-        slice_len = min(quantum, p.remaining)
+        if p.start is None:
+            p.start = time
+        
+        slice_len = min(quantum,p.remain)
         seg_start = time
         seg_end = time + slice_len
-        segments.append(Segment(p.pid, seg_start, seg_end, 'run'))
-        total_run_time += slice_len
+        segments.append(Segment(p.pid,seg_start,seg_end,'run'))
+        total_runtime += slice_len
         time = seg_end
-        p.remaining -= slice_len
+        p.remain -= slice_len
 
-        # New arrivals during this run
         flush_arrivals(time)
 
-        # If not finished, requeue
-        if p.remaining > 0:
+        if p.remain > 0:
             ready.append(p)
         else:
-            p.completion = time
-
-        # Context switch if there's more work ahead
-        more_ahead = any(q.remaining > 0 for q in procs.values())
-        if cs > 0 and more_ahead:
-            segments.append(Segment(None, time, time + cs, 'cs'))
+            p.end = time
+        
+        more_head = any(q.remain > 0 for q in procs.values())
+        if cs > 0 and more_head:
+            segments.append(Segment(None,time,time + cs, 'cs'))
             time += cs
             flush_arrivals(time)
-
     makespan = segments[-1].end if segments else 0
-    # Stats
+
     stats = {}
     for pid, p in procs.items():
-        ct = p.completion
+        ct = p.end 
         tat = ct - p.arrival
-        wt  = tat - p.burst
-        rt  = (p.first_start - p.arrival) if p.first_start is not None else 0
-        stats[pid] = dict(CT=ct, TAT=tat, WT=wt, RT=rt)
+        wt = tat - p.burst
+        rt = (p.start - p.arrival) if p.start is not None else 0
+        stats[pid] = dict(CT = ct, WT=wt, TAT = tat,RT = rt)
 
     totals = dict(
         avg_wt = sum(s["WT"] for s in stats.values())/len(stats) if stats else 0.0,
         avg_tat = sum(s["TAT"] for s in stats.values())/len(stats) if stats else 0.0,
         throughput = (len(processes)/makespan) if makespan>0 else 0.0,
-        cpu_util = (total_run_time/makespan*100.0) if makespan>0 else 0.0,
+        cpu_util = (total_runtime/makespan*100.0) if makespan>0 else 0.0,
         makespan = makespan
     )
     return segments, stats, totals
 
-# -------------------- UI --------------------
 
-class RRApp(tk.Tk):
+class App(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("Round Robin Scheduler (Tkinter)")
-        self.geometry("1100x640")
-        self.minsize(980, 560)
+        self.geometry("1000x600")
+        self.title("ROUND ROBIN ALGORITHM")
+        self.configure(fg_color="#0F0E0E")
+        # self._set_appearance_mode("dark")
 
-        # State
         self.processes: list[Proc] = []
         self.segments: list[Segment] = []
         self.stats: dict = {}
         self.totals: dict = {}
         self.anim_idx = 0
         self.animating = False
-        self.scale_px = 24  # px per time unit (auto-adjust later)
-        self.row_height = 34
+        self.scale_px = 70
+        self.row_height = 80
         self.colors = {}
         self.palette = [
             "#4CC9F0", "#F72585", "#7209B7", "#3A0CA3", "#4361EE",
             "#4895EF", "#F15BB5", "#43AA8B", "#F9C74F", "#90BE6D",
         ]
+
         self.bg_dark = "#111418"
         self.fg = "#E6E6E6"
         self.cs_color = "#666A73"
         self.idle_color = "#2B2F36"
 
-        self.configure(bg=self.bg_dark)
+        self.configure(bg = self.bg_dark)
         style = ttk.Style(self)
+        # Customizing the style of theme
         try:
             style.theme_use("clam")
         except:
             pass
-        style.configure("TLabel", foreground=self.fg, background=self.bg_dark)
-        style.configure("TFrame", background=self.bg_dark)
-        style.configure("TLabelframe", background=self.bg_dark, foreground=self.fg)
-        style.configure("TButton", padding=6)
+
+        style.configure("TLabel",foreground = self.fg,background =self.bg_dark)
+        style.configure("TFrame",background = self.bg_dark)
+        style.configure("TLabelframe",background = self.bg_dark,foreground = self.fg)
+        style.configure("TButton",padding = 6)
         style.configure("Treeview",
                         background="#1A1F25", foreground=self.fg, fieldbackground="#1A1F25",
                         rowheight=26)
@@ -165,101 +150,146 @@ class RRApp(tk.Tk):
         self.build_left_panel()
         self.build_center_canvas()
         self.build_right_panel()
-
-        # Preset demo
-        self.add_demo()
-
-    # ---- Layout builders ----
+    
     def build_left_panel(self):
-        left = ttk.Frame(self)
-        left.pack(side=tk.LEFT, fill=tk.Y, padx=10, pady=10)
+        # self.geometry("200x600")
+        
+        side = [(2,2),(5 ,5)]
 
-        lf = ttk.Labelframe(left, text="Nhập tiến trình")
-        lf.pack(fill=tk.X, pady=(0,10))
+        left = ctk.CTkFrame(self)
+        
+        left.configure(fg_color="#0F0E0E")
+        
+        left.pack(side=ctk.LEFT, fill='y') 
 
-        frm = ttk.Frame(lf)
-        frm.pack(fill=tk.X, padx=6, pady=6)
+        # left._set_appearance_mode("dark")
 
-        ttk.Label(frm, text="PID").grid(row=0, column=0, sticky="w")
-        ttk.Label(frm, text="Arrival").grid(row=0, column=1, sticky="w", padx=(8,0))
-        ttk.Label(frm, text="Burst").grid(row=0, column=2, sticky="w", padx=(8,0))
+        label = ctk.CTkLabel(left, text="INPUT", font=("Helvetica", 20,"bold"))
+        label.pack()
 
-        self.ent_pid = ttk.Entry(frm, width=6)
-        self.ent_arr = ttk.Entry(frm, width=6)
-        self.ent_burst = ttk.Entry(frm, width=6)
-        self.ent_pid.grid(row=1, column=0, sticky="w")
-        self.ent_arr.grid(row=1, column=1, sticky="w", padx=(8,0))
-        self.ent_burst.grid(row=1, column=2, sticky="w", padx=(8,0))
+        frm = ctk.CTkFrame(left)
+        frm.configure(fg_color = "#0F0E0E")
+        frm.pack(fill='x', padx=6, pady=0)
 
-        btns = ttk.Frame(lf)
-        btns.pack(fill=tk.X, padx=6, pady=(4,6))
-        ttk.Button(btns, text="Add", command=self.add_proc).pack(side=tk.LEFT)
-        ttk.Button(btns, text="Remove", command=self.remove_selected).pack(side=tk.LEFT, padx=6)
-        ttk.Button(btns, text="Clear", command=self.clear_list).pack(side=tk.LEFT)
+        # left._set_appearance_mode("dark")
+        label1 = ctk.CTkLabel(master=frm,
+                               text="Process ID",
+                               fg_color="#468A9A",
+                               width= 50,
+                               text_color="white",
+                               corner_radius=10)
+        label1.grid(row=1, column=0, sticky='ew',padx = side[0],pady = side[1])
 
-        self.lst = tk.Listbox(lf, height=8, bg="#1A1F25", fg=self.fg, selectmode=tk.SINGLE)
-        self.lst.pack(fill=tk.BOTH, expand=True, padx=6, pady=(4,6))
+        label2 = ctk.CTkLabel(master=frm,
+                               text="Arrival Time",
+                               fg_color="#468A9A",
+                               text_color="white",
+                               corner_radius=10)
+        label2.grid(row=1, column=1, sticky='ew',padx = side[0],pady = side[1])
 
-        # Controls
-        cf = ttk.Labelframe(left, text="Thiết lập")
-        cf.pack(fill=tk.X, pady=(0,10))
+        label3 = ctk.CTkLabel(master=frm,
+                               text="Burst Time",
+                               fg_color="#468A9A",
+                               text_color="white",
+                               corner_radius=10)
+        label3.grid(row=1, column=2, sticky='ew',padx = side[0],pady = side[1])
 
-        r1 = ttk.Frame(cf); r1.pack(fill=tk.X, padx=6, pady=4)
-        ttk.Label(r1, text="Quantum").pack(side=tk.LEFT)
+        self.ent_pid = ctk.CTkEntry(frm)
+        self.ent_arr = ctk.CTkEntry(frm)
+        self.ent_burst = ctk.CTkEntry(frm)
+        # self.ent_rand = ctk.CTkEntry(frm)
+
+        self.ent_pid.grid(row = 2, column = 0,sticky = 'w',padx = side[0],pady = side[1])
+        self.ent_arr.grid(row = 2, column = 1,sticky = 'w',padx = side[0],pady = side[1])
+        self.ent_burst.grid(row = 2, column = 2,sticky = 'w',padx = side[0],pady = side[1])
+
+        btns = ctk.CTkFrame(left,corner_radius=8)
+        btns.configure(fg_color="#0F0E0E")
+        btns.pack(fill = 'x', padx=6, pady=6)
+        ctk.CTkButton(btns, text="Add", command=self.add_proc).pack(side = ctk.LEFT,padx = side[0],pady = side[1])
+        ctk.CTkButton(btns, text="Remove", command=self.remove_selected).pack(side = ctk.LEFT,padx = side[0],pady = side[1])
+        ctk.CTkButton(btns, text="Clear", command=self.clear_list).pack(side = ctk.LEFT,padx = side[0],pady = side[1])
+
+        self.lst = tk.Listbox(left, height=8, bg="#0F0E0E", fg=self.fg, selectmode=tk.SINGLE, borderwidth=8)
+        self.lst.pack(fill=tk.BOTH, expand=True, padx=side[0], pady=side[1])
+        
+        cf = ctk.CTkFrame(left,corner_radius=8,border_width=2)
+        cf.configure(fg_color="#0F0E0E")
+        cf.pack(fill = ctk.X,padx=(6,6), pady=6)
+
+        r1 = ctk.CTkFrame(cf)
+        r1.configure(fg_color="#0F0E0E")
+        r1.pack(fill=tk.X, padx=(6,6), pady=6)
+
+        ctk.CTkLabel(r1, text="Quantum").pack(side=tk.LEFT)
         self.sp_q = tk.Spinbox(r1, from_=1, to=100, width=6)
         self.sp_q.delete(0, tk.END); self.sp_q.insert(0, "3")
         self.sp_q.pack(side=tk.LEFT, padx=(6,14))
 
-        ttk.Label(r1, text="Context switch").pack(side=tk.LEFT)
+        ctk.CTkLabel(r1, text="Context switch").pack(side=tk.LEFT)
         self.sp_cs = tk.Spinbox(r1, from_=0, to=20, width=6)
         self.sp_cs.delete(0, tk.END); self.sp_cs.insert(0, "0")
         self.sp_cs.pack(side=tk.LEFT, padx=(6,0))
 
-        r2 = ttk.Frame(cf); r2.pack(fill=tk.X, padx=6, pady=4)
-        ttk.Label(r2, text="Tốc độ (ms/segment)").pack(side=tk.LEFT)
+        r2 = ctk.CTkFrame(cf)
+        r2.configure(fg_color="#0F0E0E")
+        r2.pack(fill=tk.X, padx=6, pady=4)
+        ctk.CTkLabel(r2, text="Tốc độ (ms/segment)").pack(side=tk.LEFT)
         self.sp_speed = tk.Spinbox(r2, from_=1, to=2000, width=6)
         self.sp_speed.delete(0, tk.END); self.sp_speed.insert(0, "250")
         self.sp_speed.pack(side=tk.LEFT, padx=(6,0))
 
-        # Actions
-        af = ttk.Frame(left); af.pack(fill=tk.X, pady=(6,0))
-        ttk.Button(af, text="Run", command=self.run_schedule).pack(side=tk.LEFT)
-        ttk.Button(af, text="Step", command=self.step_once).pack(side=tk.LEFT, padx=6)
-        self.btn_pause = ttk.Button(af, text="Pause", command=self.toggle_pause, state=tk.DISABLED)
-        self.btn_pause.pack(side=tk.LEFT, padx=6)
-        ttk.Button(af, text="Reset", command=self.reset_all).pack(side=tk.LEFT, padx=6)
+        # ACTION
+        af = ctk.CTkFrame(left)
+        af.pack(fill=tk.X, pady=(6,0))
+        ctk.CTkButton(af, text="Run", command=self.run_schedule).grid(row = 1, column = 0,sticky = 'w',padx = side[0],pady = side[1])
+        ctk.CTkButton(af, text="Step", command=self.step_once).grid(row = 1, column = 1,sticky = 'w',padx = side[0],pady = side[1])
+        self.btn_pause = ctk.CTkButton(af, text="Pause", command=self.toggle_pause, state=tk.DISABLED)
+        self.btn_pause.grid(row = 1, column = 2,sticky = 'w',padx = side[0],pady = side[1])
+        ctk.CTkButton(af, text="Reset", command=self.reset_all).grid(row = 2, column = 0,sticky = 'w',padx = side[0],pady = side[1])
+
+        ctk.CTkButton(af, text="ADD", command=self.addNnum).grid(row = 2, column = 1,sticky = 'w',padx = side[0],pady = side[1])
+        self.ent_add = ctk.CTkEntry(af)
+        self.ent_add.grid(row = 2, column = 2,sticky = 'w',padx = side[0],pady = side[1])
+
+
 
     def build_center_canvas(self):
-        mid = ttk.Frame(self)
-        mid.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, pady=10)
+        mid = ctk.CTkFrame(self)
+        mid.configure(fg_color="#0F0E0E")
+        mid.pack(side=ctk.LEFT, fill=ctk.BOTH, expand = True,pady = 0)
 
-        title = ttk.Label(mid, text="Gantt Chart", font=("Segoe UI", 11, "bold"))
-        title.pack(anchor="w", padx=4, pady=(0,6))
+        title = ctk.CTkLabel(mid, text="GANT CHART", font=("Helvetica", 20,"bold"))
+        title.pack()
 
-        cv_frame = ttk.Frame(mid)
-        cv_frame.pack(fill=tk.BOTH, expand=True)
+        cv_frame = ctk.CTkFrame(mid)
+        cv_frame.pack(fill = ctk.BOTH,expand = True)
 
-        self.canvas = tk.Canvas(cv_frame, bg="#0D1117", height=280, highlightthickness=0)
-        self.hbar = ttk.Scrollbar(cv_frame, orient=tk.HORIZONTAL, command=self.canvas.xview)
+        self.canvas = ctk.CTkCanvas(cv_frame, bg="#3C3D37", height=200, highlightthickness=0)
+        self.hbar = ctk.CTkScrollbar(cv_frame, orientation=ctk.HORIZONTAL, command=self.canvas.xview)
         self.canvas.configure(xscrollcommand=self.hbar.set)
 
         self.canvas.pack(fill=tk.BOTH, expand=True)
         self.hbar.pack(fill=tk.X)
 
-        # Info row
-        info = ttk.Frame(mid); info.pack(fill=tk.X, pady=(8,0))
-        self.lbl_now = ttk.Label(info, text="t = 0")
-        self.lbl_now.pack(side=tk.LEFT, padx=4)
+        # INFO
 
-        self.lbl_queue = ttk.Label(info, text="Ready: []")
+        info = ctk.CTkFrame(mid)
+        info.pack(fill=tk.X, pady=(8,0))
+        self.lbl_now = ctk.CTkLabel(info, text="t = 0")
+        self.lbl_now.pack(side=tk.LEFT, padx=4)
+        self.lbl_queue = ctk.CTkLabel(info, text="Ready: []")
         self.lbl_queue.pack(side=tk.LEFT, padx=14)
 
     def build_right_panel(self):
-        right = ttk.Frame(self)
-        right.pack(side=tk.RIGHT, fill=tk.Y, padx=10, pady=10)
+        right = ctk.CTkFrame(self)
+        right.configure(fg_color="#0F0E0E")
+        right.pack(side=tk.RIGHT, fill=tk.Y, padx=10)
 
+        title = ctk.CTkLabel(right, text="TOTAL", font=("Helvetica", 20,"bold"))
+        title.pack()
         # Totals
-        tf = ttk.Labelframe(right, text="Chỉ số tổng")
+        tf = ctk.CTkFrame(right)
         tf.pack(fill=tk.X)
 
         self.var_wt = tk.StringVar(value="0.00")
@@ -267,24 +297,25 @@ class RRApp(tk.Tk):
         self.var_util = tk.StringVar(value="0.00%")
         self.var_tp = tk.StringVar(value="0.00/s")
 
-        row = ttk.Frame(tf); row.pack(fill=tk.X, padx=6, pady=4)
-        ttk.Label(row, text="Avg Waiting:").pack(side=tk.LEFT)
-        ttk.Label(row, textvariable=self.var_wt).pack(side=tk.RIGHT)
+        row = ctk.CTkFrame(tf,corner_radius=8);
+        row.pack(fill=tk.X, padx=6, pady=4)
+        ctk.CTkLabel(row, text="Avg Waiting:",height=20).pack(side=tk.LEFT)
+        ctk.CTkLabel(row, textvariable=self.var_wt,height=20).pack(side=tk.RIGHT)
 
-        row = ttk.Frame(tf); row.pack(fill=tk.X, padx=6, pady=4)
-        ttk.Label(row, text="Avg Turnaround:").pack(side=tk.LEFT)
-        ttk.Label(row, textvariable=self.var_tat).pack(side=tk.RIGHT)
+        row = ctk.CTkFrame(tf); row.pack(fill=tk.X, padx=6, pady=4)
+        ctk.CTkLabel(row, text="Avg Turnaround:",height=20).pack(side=tk.LEFT)
+        ctk.CTkLabel(row, textvariable=self.var_tat,height=20).pack(side=tk.RIGHT)
 
-        row = ttk.Frame(tf); row.pack(fill=tk.X, padx=6, pady=4)
-        ttk.Label(row, text="CPU Utilization:").pack(side=tk.LEFT)
-        ttk.Label(row, textvariable=self.var_util).pack(side=tk.RIGHT)
+        row = ctk.CTkFrame(tf); row.pack(fill=tk.X, padx=6, pady=4)
+        ctk.CTkLabel(row, text="CPU Utilization:",height=20).pack(side=tk.LEFT)
+        ctk.CTkLabel(row, textvariable=self.var_util,height=20).pack(side=tk.RIGHT)
 
-        row = ttk.Frame(tf); row.pack(fill=tk.X, padx=6, pady=4)
-        ttk.Label(row, text="Throughput:").pack(side=tk.LEFT)
-        ttk.Label(row, textvariable=self.var_tp).pack(side=tk.RIGHT)
+        row = ctk.CTkFrame(tf); row.pack(fill=tk.X, padx=6, pady=4)
+        ctk.CTkLabel(row, text="Throughput:",height=20).pack(side=tk.LEFT)
+        ctk.CTkLabel(row, textvariable=self.var_tp,height=20).pack(side=tk.RIGHT)
 
         # Table
-        tblf = ttk.Labelframe(right, text="Kết quả từng tiến trình")
+        tblf = ttk.Labelframe(right, text="RESULT ALL OF PROCESSES")
         tblf.pack(fill=tk.BOTH, expand=True, pady=(10,0))
 
         self.tbl = ttk.Treeview(tblf, columns=("ct","wt","tat","rt"), show="headings")
@@ -298,7 +329,19 @@ class RRApp(tk.Tk):
         self.tbl.column("rt", width=60, anchor="center")
         self.tbl.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
 
-    # ---- Data ops ----
+    def addNnum(self):
+        try:
+            n = int(self.ent_add.get().strip())
+        except ValueError:
+            messagebox.showerror("ERRROR", "AN AMOUNT OF PROCESSES MUST BE INT")
+            return
+        pids, arrs, burs = seg_initializing(n)
+        for i in range(n):
+            self.processes.append(Proc(pids[i], arrs[i], burs[i]))
+            self.lst.insert(tk.END, f"{pids[i]} - A={arrs[i]}  B={burs[i]}")
+            if pids[i] not in self.colors:
+                self.colors[pids[i]] = self.palette[(len(self.colors)) % len(self.palette)]
+
     def add_proc(self):
         pid = self.ent_pid.get().strip() or f"P{len(self.processes)+1}"
         try:
@@ -327,22 +370,11 @@ class RRApp(tk.Tk):
         pid = self.processes[idx].pid
         self.lst.delete(idx)
         del self.processes[idx]
-        # keep color mapping (helps when re-adding)
-
+    
     def clear_list(self):
         self.lst.delete(0, tk.END)
         self.processes.clear()
-        # do not clear colors so demos keep colors
 
-    def add_demo(self):
-        demo = [Proc("P1",0,7), Proc("P2",2,4), Proc("P3",4,1)]
-        for p in demo:
-            self.processes.append(p)
-            self.lst.insert(tk.END, f"{p.pid} - A={p.arrival}  B={p.burst}")
-            if p.pid not in self.colors:
-                self.colors[p.pid] = self.palette[(len(self.colors)) % len(self.palette)]
-
-    # ---- Scheduling & animation ----
     def run_schedule(self):
         if self.animating:
             return
@@ -357,7 +389,7 @@ class RRApp(tk.Tk):
             return
         # deep copy processes for compute (keep original list intact)
         cloned = [Proc(p.pid, p.arrival, p.burst) for p in self.processes]
-        self.segments, self.stats, self.totals = compute_rr(cloned, q, cs)
+        self.segments, self.stats, self.totals = CalculateRR(cloned, q, cs)
         self.update_totals()
         self.populate_table()
         self.prepare_canvas()
@@ -367,7 +399,6 @@ class RRApp(tk.Tk):
         self.animate_step()
 
     def step_once(self):
-        # step through precomputed segments one by one
         if not self.segments:
             self.run_schedule()
             return
@@ -387,6 +418,7 @@ class RRApp(tk.Tk):
             self.animating = False
             self.btn_pause.configure(text="Resume")
 
+
     def reset_all(self):
         self.anim_idx = 0
         self.animating = False
@@ -402,7 +434,7 @@ class RRApp(tk.Tk):
         self.segments = []
         self.stats = {}
         self.totals = {}
-
+    
     def animate_step(self):
         if not self.animating:
             return
@@ -419,17 +451,16 @@ class RRApp(tk.Tk):
         except:
             delay = 250
         self.after(max(1, delay), self.animate_step)
-
-    # ---- Canvas drawing ----
+    
     def prepare_canvas(self):
         self.canvas.delete("all")
         # Auto scale to fit to ~1200px wide if can
         makespan = self.segments[-1].end if self.segments else 0
         if makespan <= 0:
-            self.scale_px = 24
+            self.scale_px = 50
         else:
             target = 1400
-            self.scale_px = max(8, min(40, int(target / max(1, makespan))))
+            self.scale_px = max(8, min(100, int(target / max(1, makespan))))
         # Axis
         self.canvas.create_text(10, 12, anchor="w", fill="#9AA0A6",
                                 text="Thời gian (đơn vị)")
@@ -478,7 +509,6 @@ class RRApp(tk.Tk):
                 q_preview.append(s.pid)
         self.lbl_queue.configure(text=f"Ready: {q_preview}")
 
-    # ---- Totals & table ----
     def update_totals(self):
         if not self.totals: return
         self.var_wt.set(f"{self.totals['avg_wt']:.2f}")
@@ -492,6 +522,7 @@ class RRApp(tk.Tk):
             s = self.stats[pid]
             self.tbl.insert("", tk.END, values=(s["CT"], s["WT"], s["TAT"], s["RT"]))
 
-if __name__ == "__main__":
-    app = RRApp()
-    app.mainloop()
+
+
+app = App()
+app.mainloop()
