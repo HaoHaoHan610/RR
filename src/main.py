@@ -16,18 +16,18 @@ def Non_Arrival_time(data,quantum):
     print(output)
 
 if __name__ == "__main__":
-    here = Path(__file__).resolve().parent
-    csv_path = here / 'db' / 'data_set.csv'
     
-    data = pd.read_csv(csv_path)
     while(True):
         key = int(input("Key: "))
-        if key == 4:
+        if key == 3:
             break
         elif key == 0:
             num = int(input("An amount of processes: "))
             par_initializing(num)
         else:
+            here = Path(__file__).resolve().parent
+            csv_path = here / 'db' / 'data_set.csv'
+            data = pd.read_csv(csv_path)
             quantum = int(input("QUANTUM: "))
             if key == 1:
                 Non_Arrival_time(data=data,quantum=quantum)
