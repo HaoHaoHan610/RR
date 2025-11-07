@@ -1,5 +1,5 @@
 import pandas as pd
-from timer import get_cpu_time_unit
+# from timer import get_cpu_time_unit
 import numpy as np
 ilb = 0 # the time of CPU in rest
 
@@ -55,8 +55,8 @@ def RR(data,quantum):
     total_burst_time = sum(burst_time)
 
     
-    average_waiting_time = total_waiting_time*get_cpu_time_unit()/n
-    average_turnarounf_time = total_run_around_t*get_cpu_time_unit()/n
+    average_waiting_time = total_waiting_time/n
+    average_turnarounf_time = total_run_around_t/n
 
     return{
         'n':str(n),

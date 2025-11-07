@@ -1,13 +1,35 @@
 import pandas as pd
 from Round_robin.RR import RR
 from Round_robin.CO_RR import RR_algorithm
+from initializing_process import par_initializing,initializing
+from dashboard import App
 
 pd.options.display.max_rows = 100
+
+def Arrival_time(data,quantum):
+    output = RR_algorithm(data,quantum)
+    print(output)
+
+def Non_Arrival_time(data,quantum):
+    output = RR(data,quantum)
+    print(output)
+
 if __name__ == "__main__":
     data = pd.read_csv("db/data_set.csv")
-    output = RR_algorithm(data,2)
-    print(output)
-    # print(type(data))
-    # # print(data)
-    # dic = RR(data,4)
-    # print(dic)
+    while(True):
+        key = int(input("Key"))
+        if key == 4:
+            break
+        elif key == 0:
+            num = int(input("An amount of processes"))
+            par_initializing(num)
+        else:
+            quantum = int(input("QUANTUM"))
+            if key == 1:
+                Non_Arrival_time(data=data,quantum=quantum)
+            elif key == 2:
+                Arrival_time(data=data,quantum=quantum)
+            else:
+                print("NOT THE VALID KEY")
+
+        

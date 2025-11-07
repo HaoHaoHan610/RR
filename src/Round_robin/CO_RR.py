@@ -54,7 +54,8 @@ def RR_algorithm(data, quantum):
     avg_turn   = sum(turnaround)/n
 
     return {
+        "n":n,
         "avg_waiting": f"{avg_wait:.4f}",
         "avg_turn": f"{avg_turn:.4f}",
-        "n":n
+        "time": f"{t}"
     }
