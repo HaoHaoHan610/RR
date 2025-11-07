@@ -1,5 +1,8 @@
 import pandas as pd
-from timer import get_cpu_time_unit
+#from timer import get_cpu_time_unit
+import time
+def get_cpu_time_unit():
+    return time.process_time()
 import numpy as np
 ilb = 0 # the time of CPU in rest
 
