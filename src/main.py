@@ -2,7 +2,8 @@ import pandas as pd
 from Round_robin.RR import RR
 from Round_robin.CO_RR import RR_algorithm
 from initializing_process import par_initializing,initializing
-from dashboard import App
+from pathlib import Path
+# from dashboard import App
 
 pd.options.display.max_rows = 100
 
@@ -15,16 +16,19 @@ def Non_Arrival_time(data,quantum):
     print(output)
 
 if __name__ == "__main__":
-    data = pd.read_csv("db/data_set.csv")
+    here = Path(__file__).resolve().parent
+    csv_path = here / 'db' / 'data_set.csv'
+    
+    data = pd.read_csv(csv_path)
     while(True):
-        key = int(input("Key"))
+        key = int(input("Key: "))
         if key == 4:
             break
         elif key == 0:
-            num = int(input("An amount of processes"))
+            num = int(input("An amount of processes: "))
             par_initializing(num)
         else:
-            quantum = int(input("QUANTUM"))
+            quantum = int(input("QUANTUM: "))
             if key == 1:
                 Non_Arrival_time(data=data,quantum=quantum)
             elif key == 2:
